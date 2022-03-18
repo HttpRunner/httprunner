@@ -23,3 +23,7 @@ def get_app_version():
 
 def calculate_two_nums(a, b=1):
     return [a + b, b - a]
+
+
+def get_session_fixture(session_fixture):
+    return session_fixture[0]["name"]

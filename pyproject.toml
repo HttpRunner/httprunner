@@ -44,6 +44,7 @@ requests-toolbelt = {version = "^0.9.1", optional = true}
 filetype = {version = "^1.0.7", optional = true}
 locust = {version = "^1.0.3", optional = true}
 Brotli = "^1.0.9"
+retry = "^0.9.2"
 
 [tool.poetry.extras]
 allure = ["allure-pytest"]                  # pip install "httprunner[allure]", poetry install -E allure

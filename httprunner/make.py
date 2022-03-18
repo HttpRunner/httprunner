@@ -8,7 +8,16 @@ import jinja2
 from loguru import logger
 from sentry_sdk import capture_exception
 
-from httprunner import exceptions, __version__
+try:
+    import allure
+    from allure_commons.types import AttachmentType
+
+    USE_ALLURE = True
+except ModuleNotFoundError:
+    USE_ALLURE = False
+
+from httprunner.parser import function_regex_compile, parse_function_params
+from httprunner import exceptions, __version__, Parameters
 from httprunner.compat import (
     ensure_testcase_v3_api,
     ensure_testcase_v3,
@@ -44,9 +53,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__){% for _ in range(diff_levels) %}.parent{% endfor %}))
 {% endif %}
 
-{% if parameters %}
+{% if pytest_marks %}
+import debugtalk
 import pytest
-from httprunner import Parameters
+{% endif %}
+
+{% if use_allure %}
+import allure
 {% endif %}
 
 from httprunner import HttpRunner, Config, Step, RunRequest, RunTestCase
@@ -56,11 +69,7 @@ from httprunner import HttpRunner, Config, Step, RunRequest, RunTestCase
 
 class {{ class_name }}(HttpRunner):
 
-    {% if parameters %}
-    @pytest.mark.parametrize("param", Parameters({{parameters}}))
-    def test_start(self, param):
-        super().test_start(param)
-    {% endif %}
+{{ pytest_marks }}
 
     config = {{ config_chain_style }}
 
@@ -272,6 +281,11 @@ def make_teststep_chain_style(teststep: Dict) -> Text:
         variables = teststep["variables"]
         step_info += f".with_variables(**{variables})"
 
+    if "retry" in teststep:
+        tries = teststep["retry"]["tries"]
+        delay = teststep["retry"]["delay"]
+        step_info += f".with_retry(tries={tries}, delay={delay})"
+
     if "setup_hooks" in teststep:
         setup_hooks = teststep["setup_hooks"]
         for hook in setup_hooks:
@@ -421,7 +435,8 @@ def make_testcase(testcase: Dict, dir_path: Text = None) -> Text:
         "class_name": f"TestCase{testcase_cls_name}",
         "imports_list": imports_list,
         "config_chain_style": make_config_chain_style(config),
-        "parameters": config.get("parameters"),
+        "pytest_marks": make_pytest_marks(config),
+        "use_allure": USE_ALLURE,
         "teststeps_chain_style": [
             make_teststep_chain_style(step) for step in teststeps
         ],
@@ -499,6 +514,126 @@ def make_testsuite(testsuite: Dict) -> NoReturn:
         # make testcase
         testcase_pytest_path = make_testcase(testcase_dict, testsuite_dir)
         pytest_files_run_set.add(testcase_pytest_path)
+
+
+def make_pytest_marks(config: Dict) -> (Text, Text):
+    project_meta = load_project_meta(config["path"])
+
+    # pytest marks, refer:
+    # https://docs.pytest.org/en/6.2.x/mark.html
+    # https://docs.pytest.org/en/6.2.x/reference.html
+    result = ""
+    default_test_start = (
+        "    def test_start(self):    \n"
+        "        super().test_start() \n"
+    )
+    fixtures_test_start = (
+        "    def test_start(self, {fixture_str}):                         \n"
+        "        scope, fixtures = locals(), {fixture_list}               \n"
+        "        values = map(lambda x: scope.get(x), fixtures)           \n"
+        "        super().test_start(fixtures=dict(zip(fixtures, values))) \n"
+    )
+    parameters_test_start = (
+        "    def test_start(self, param):        \n"
+        "        super().test_start(param=param) \n"
+    )
+    both_test_start = (
+        "    def test_start(self, {fixture_str}, param):                                 \n"
+        "        scope, fixtures = locals(), {fixture_list}                              \n"
+        "        values = map(lambda x: scope.get(x), fixtures)                          \n"
+        "        super().test_start(fixtures=dict(zip({fixtures}, values)), param=param) \n"
+    )
+
+    # marks
+    # keep yaml load order, refer:
+    # https://stackoverflow.com/a/47881325
+    # https://mail.python.org/pipermail/python-dev/2016-September/146327.html
+    fixture_list = []
+    fixtures_exist = False
+    parameters_exist = False
+    for key, param in config.items():
+
+        if key == "filterwarnings":
+            result += f"    @pytest.mark.filterwarnings({param})\n"
+
+        elif key == "parameters":
+            parameters_exist = True
+            param = Parameters(param)
+            result += f"    @pytest.mark.parametrize(\"param\", {param})\n"
+
+        elif key == "skip":
+            result += f"    @pytest.mark.skip(reason=\"{param}\")\n"
+
+        elif key == "usefixtures":
+            errmsg = f"usefixtures type should be List[str], got ({type(param)}, {param})"
+            assert isinstance(param, list), errmsg
+            fixture_list.extend(param)
+            fixtures_exist = True
+
+        elif key == "custom_marks":
+            errmsg = f"custom_marks type should be List[str], got ({type(param)}, {param})"
+            assert isinstance(param, list), errmsg
+            for mark in param:
+                result += f"    @pytest.mark.{mark}\n"
+
+        elif USE_ALLURE and key == "links":
+            errmsg = f"links type should be List[dict], got ({type(param)}, {param})"
+            assert isinstance(param, list), errmsg
+            assert param and isinstance(param[0], dict), errmsg
+            for link in reversed(param):
+                if link.get("name"):
+                    result += f"    @allure.link(\"{link['url']}\", name=\"{link['name']}\")\n"
+                else:
+                    result += f"    @allure.link(\"{link['url']}\")\n"
+
+        elif USE_ALLURE and key == "description":
+            result += f"    @allure.description(\"{param}\")\n"
+
+        elif USE_ALLURE and key == "name":
+            result += f"    @allure.title(\"{param}\")\n"
+
+        elif key in ("skipif", "xfail"):
+            condition = param.get("condition")
+            func_match = function_regex_compile.match(condition)
+            if func_match:
+                func_name = func_match.group(1)
+                func_params_str = func_match.group(2)
+                func_meta = parse_function_params(func_params_str)
+                if project_meta.functions.get(func_name):
+                    condition = f"debugtalk.{func_name}(*{func_meta['args']}, **{func_meta['kwargs']})"
+
+            if key == "skipif":
+                reason = param.get("reason")
+                result += f"    @pytest.mark.skipif({condition}, reason=\"{reason}\")\n"
+
+            if key == "xfail":
+                reason = param.get("reason")
+                raises = param.get("raises", None)
+                run = param.get("run", True)
+                strict = param.get("strict", False)
+                result += (f"    @pytest.mark.skipif({condition}, reason=\"{reason}\", "
+                           f"raises={raises}, run={run}, strict={strict})\n")
+
+    if not result:
+        return result
+
+    # test_start
+    if parameters_exist and fixtures_exist:
+        result += both_test_start.format(
+            fixture_str=", ".join(fixture_list),
+            fixture_list=fixture_list
+        )
+    elif fixtures_exist:
+        result += fixtures_test_start.format(
+            fixture_str=", ".join(fixture_list),
+            fixture_list=fixture_list
+        )
+    elif parameters_exist:
+        result += parameters_test_start
+    else:
+        result += default_test_start
+
+    return result
 
 
 def __make(tests_path: Text) -> NoReturn:

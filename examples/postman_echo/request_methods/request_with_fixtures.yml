@@ -1,0 +1,15 @@
+config:
+    name: "request with fixture: session fixture"
+    base_url: "https://postman-echo.com"
+    usefixtures: ["session_fixture"]
+
+teststeps:
+-
+    name: get with params
+    request:
+        method: GET
+        url: /get
+        params:
+            info: "ip"
+        headers:
+            User-Agent: HttpRunner/${get_httprunner_version()}/${get_session_fixture($session_fixture)}

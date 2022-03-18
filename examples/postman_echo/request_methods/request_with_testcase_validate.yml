@@ -1,0 +1,19 @@
+config:
+    name: "request methods testcase: reference testcase"
+    variables:
+        foo1: testsuite_config_bar1
+        expect_foo1: testsuite_config_bar1
+        expect_foo2: config_bar2
+    base_url: "https://postman-echo.com"
+    verify: False
+
+teststeps:
+-
+    name: "extend the last one of the step in sub-testcase"
+    variables:
+        foo1: testcase_ref_bar1
+        expect_foo1: testcase_ref_bar1
+    testcase: request_methods/request_with_functions.yml
+    validate:
+        - eq: ["status_code", 200]
+        - eq: ["$foo3", "bar21"]                                # can access all extract-variables in sub-testcase

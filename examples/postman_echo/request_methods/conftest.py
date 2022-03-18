@@ -21,7 +21,7 @@ def session_fixture(request):
 
     logger.debug(f"collected {total_testcases_num} testcases: {testcases}")
 
-    yield
+    yield testcases
 
     logger.debug(f"teardown task fixture")
 

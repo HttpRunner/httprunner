@@ -1,3 +1,5 @@
+import inspect
+import json
 import os
 import time
 import uuid
@@ -6,12 +8,14 @@ from typing import List, Dict, Text, NoReturn
 
 try:
     import allure
+    from allure_commons.types import AttachmentType
 
     USE_ALLURE = True
 except ModuleNotFoundError:
     USE_ALLURE = False
 
 from loguru import logger
+from retry.api import retry_call
 
 from httprunner import utils, exceptions
 from httprunner.client import HttpSession
@@ -33,6 +37,7 @@ from httprunner.models import (
     ProjectMeta,
     TestCase,
     Hooks,
+    Validators
 )
 
 
@@ -46,6 +51,7 @@ class HttpRunner(object):
     __project_meta: ProjectMeta = None
     __case_id: Text = ""
     __export: List[Text] = []
+    __validators: Validators = []
     __step_datas: List[StepData] = []
     __session: HttpSession = None
     __session_variables: VariablesMapping = {}
@@ -86,6 +92,10 @@ class HttpRunner(object):
 
     def with_export(self, export: List[Text]) -> "HttpRunner":
         self.__export = export
+        return self
+
+    def with_validators(self, validators: Validators):
+        self.__validators = validators
         return self
 
     def __call_hooks(
@@ -167,6 +177,17 @@ class HttpRunner(object):
         resp_obj = ResponseObject(resp)
         step.variables["response"] = resp_obj
 
+        # allure attach: request / response
+        if USE_ALLURE:
+            params = dict(url=url, method=method, **parsed_request_dict)
+            allure.attach(json.dumps(params, indent=4), f"request detail: {method}: {url}", AttachmentType.JSON)
+
+            params = dict(status_code=resp.status_code, reason=resp.reason, headers=dict(resp.headers),
+                          cookies=resp.cookies.get_dict(), content=resp.json())
+            allure.attach(json.dumps(params, indent=4), "response detail", AttachmentType.JSON)
+
+            allure.attach(json.dumps(step.validators, indent=4), "assert detail", AttachmentType.JSON)
+
         # teardown hooks
         if step.teardown_hooks:
             self.__call_hooks(step.teardown_hooks, step.variables, "teardown request")
@@ -234,6 +255,7 @@ class HttpRunner(object):
         """run teststep: referenced testcase"""
         step_data = StepData(name=step.name)
         step_variables = step.variables
+        step_validators = step.validators
         step_export = step.export
 
         # setup hooks
@@ -248,6 +270,7 @@ class HttpRunner(object):
                 .with_case_id(self.__case_id)
                 .with_variables(step_variables)
                 .with_export(step_export)
+                .with_validators(step_validators)
                 .run()
             )
 
@@ -265,6 +288,7 @@ class HttpRunner(object):
                 .with_case_id(self.__case_id)
                 .with_variables(step_variables)
                 .with_export(step_export)
+                .with_validators(step_validators)
                 .run_path(ref_testcase_path)
             )
 
@@ -338,6 +362,11 @@ class HttpRunner(object):
         # save extracted variables of teststeps
         extracted_variables: VariablesMapping = {}
 
+        # extend validators
+        last_step = self.__teststeps[-1]
+        if last_step.request:
+            last_step.validators.extend(self.__validators)
+
         # run teststeps
         for step in self.__teststeps:
             # override variables
@@ -354,9 +383,15 @@ class HttpRunner(object):
             # run step
             if USE_ALLURE:
                 with allure.step(f"step: {step.name}"):
-                    extract_mapping = self.__run_step(step)
+                    extract_mapping = retry_call(
+                        self.__run_step, fargs=(step,), fkwargs={},
+                        tries=step.retry.tries, delay=step.retry.delay
+                    )
             else:
-                extract_mapping = self.__run_step(step)
+                extract_mapping = retry_call(
+                    self.__run_step, fargs=(step, ), fkwargs={},
+                    tries=step.retry.tries, delay=step.retry.delay
+                )
 
             # save extracted variables to session variables
             extracted_variables.update(extract_mapping)
@@ -421,7 +456,7 @@ class HttpRunner(object):
             step_datas=self.__step_datas,
         )
 
-    def test_start(self, param: Dict = None) -> "HttpRunner":
+    def test_start(self, fixtures: Dict = None, param: Dict = None) -> "HttpRunner":
         """main entrance, discovered by pytest"""
         self.__init_tests__()
         self.__project_meta = self.__project_meta or load_project_meta(
@@ -434,18 +469,12 @@ class HttpRunner(object):
         log_handler = logger.add(self.__log_path, level="DEBUG")
 
         # parse config name
-        config_variables = self.__config.variables
-        if param:
-            config_variables.update(param)
-        config_variables.update(self.__session_variables)
+        self.__config.variables.update(self.__session_variables)
+        self.__config.variables.update(param or {})
+        self.__config.variables.update(fixtures or {})
         self.__config.name = parse_data(
-            self.__config.name, config_variables, self.__project_meta.functions
+            self.__config.name, self.__config.variables, self.__project_meta.functions
         )
-
-        if USE_ALLURE:
-            # update allure report meta
-            allure.dynamic.title(self.__config.name)
-            allure.dynamic.description(f"TestCase ID: {self.__case_id}")
 
         logger.info(
             f"Start to run testcase: {self.__config.name}, TestCase ID: {self.__case_id}"

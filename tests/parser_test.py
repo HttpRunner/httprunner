@@ -2,7 +2,7 @@ import os
 import time
 import unittest
 
-from httprunner import parser
+from httprunner import parser, loader
 from httprunner.exceptions import VariableNotFound, FunctionNotFound
 from httprunner.loader import load_project_meta
 
@@ -462,6 +462,8 @@ class TestParserBasic(unittest.TestCase):
             "username-password": "${parameterize(request_methods/account.csv)}",
             "sum": "${calculate_two_nums(1, 2)}",
         }
+
+        loader.project_meta = None
         load_project_meta(
             os.path.join(
                 os.path.dirname(os.path.dirname(__file__)),

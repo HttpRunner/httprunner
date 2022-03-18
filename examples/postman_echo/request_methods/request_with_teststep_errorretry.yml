@@ -1,0 +1,22 @@
+config:
+    name: "request teststep: with error retry"
+    base_url: "https://postman-echo.com"
+
+teststeps:
+-
+    name: get with params
+    request:
+        method: GET
+        url: /get
+        params:
+            info: "ip"
+        headers:
+            User-Agent: HttpRunner/${get_httprunner_version()}
+    retry:
+        tries: 3
+        delay: 5
+    validate:
+        - eq: ["status_code", 200]
+        - eq: ["body.args.foo1", "bar11"]
+        - eq: ["body.args.sum_v", "3"]
+        - eq: ["body.args.foo2", "bar21"]

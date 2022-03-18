@@ -7,6 +7,7 @@ from httprunner.models import (
     TRequest,
     MethodEnum,
     TestCase,
+    TRetry
 )
 
 
@@ -309,6 +310,10 @@ class RunRequest(object):
         self.__step_context.variables.update(variables)
         return self
 
+    def with_retry(self, tries: int, delay: int):
+        self.__step_context.retry = TRetry(tries=tries, delay=delay)
+        return self
+
     def setup_hook(self, hook: Text, assign_var_name: Text = None) -> "RunRequest":
         if assign_var_name:
             self.__step_context.setup_hooks.append({assign_var_name: hook})
@@ -365,6 +370,9 @@ class StepRefCase(object):
     def perform(self) -> TStep:
         return self.__step_context
 
+    def validate(self) -> StepRequestValidation:
+        return StepRequestValidation(self.__step_context)
+
 
 class RunTestCase(object):
     def __init__(self, name: Text):
@@ -372,6 +380,10 @@ class RunTestCase(object):
 
     def with_variables(self, **variables) -> "RunTestCase":
         self.__step_context.variables.update(variables)
+        return self
+
+    def with_retry(self, tries: int, delay: int):
+        self.__step_context.retry = TRetry(tries=tries, delay=delay)
         return self
 
     def setup_hook(self, hook: Text, assign_var_name: Text = None) -> "RunTestCase":

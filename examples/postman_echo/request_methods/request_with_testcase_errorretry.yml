@@ -1,0 +1,11 @@
+config:
+    name: "request testcase: with error retry"
+    base_url: "https://postman-echo.com"
+
+teststeps:
+-
+    name: get with params
+    testcase: request_methods/request_with_teststep_errorretry.yml
+    retry:
+        tries: 3
+        delay: 5

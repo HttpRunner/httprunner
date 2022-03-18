@@ -169,6 +169,9 @@ def _ensure_step_attachment(step: Dict) -> Dict:
     if "variables" in step:
         test_dict["variables"] = step["variables"]
 
+    if "retry" in step:
+        test_dict["retry"] = step["retry"]
+
     if "setup_hooks" in step:
         test_dict["setup_hooks"] = step["setup_hooks"]
 
@@ -205,6 +208,9 @@ def ensure_testcase_v3_api(api_content: Dict) -> Dict:
     teststep = _sort_step_by_custom_order(teststep)
 
     config = {"name": api_content["name"]}
+    if api_content.get("config"):
+        config.update(**api_content["config"])
+
     extract_variable_names: List = list(teststep.get("extract", {}).keys())
     if extract_variable_names:
         config["export"] = extract_variable_names
