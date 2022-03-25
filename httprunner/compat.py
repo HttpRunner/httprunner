@@ -66,11 +66,9 @@ def _convert_jmespath(raw: Text) -> Text:
             item = item.strip('"')
             raw_list.append(f'"{item}"')
         elif item.isdigit():
-            # convert lst.0.name to lst[0].name
             if len(raw_list) == 0:
                 logger.error(f"Invalid jmespath: {raw}")
                 sys.exit(1)
-
             last_item = raw_list.pop()
             item = f"{last_item}[{item}]"
             raw_list.append(item)

@@ -305,7 +305,7 @@ class HttpRunner(object):
         return step_data.export_vars
 
     def __parse_config(self, config: TConfig) -> NoReturn:
-        config.variables.update(self.__session_variables)
+        config.variables = dict(self.__session_variables, **config.variables)
         config.variables = parse_variables_mapping(
             config.variables, self.__project_meta.functions
         )
@@ -437,7 +437,7 @@ class HttpRunner(object):
         config_variables = self.__config.variables
         if param:
             config_variables.update(param)
-        config_variables.update(self.__session_variables)
+        config_variables = dict(self.__session_variables, **config_variables)
         self.__config.name = parse_data(
             self.__config.name, config_variables, self.__project_meta.functions
         )
