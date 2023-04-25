@@ -1,0 +1,58 @@
+{
+  "ID": 2,
+  "Name": "gRPC",
+  "config": {
+    "ID": 1,
+    "name": "gRPC 配置",
+    "base_url": "https://127.0.0.1:40061/",
+    "variables": {
+      "UserName": "test-grpc"
+    },
+    "headers": {
+      "User-Agent": "${get_user_agent()}"
+    }
+  },
+  "teststeps": [
+    {
+      "name": "gRPC 注册用户",
+      "type": 2,
+      "gRPC": {
+        "ID": 15,
+        "url": "127.0.0.1:40061/user.User.RegisterUser",
+        "body": {
+          "P": "1112",
+          "UserName": "${UserName}"
+        },
+        "type": "Simple",
+        "headers": {
+          "User": "user.User.RegisterUser"
+        }
+      },
+      "extract": {
+        "uName": "body.UserName"
+      },
+      "validate": [
+        {
+          "check": "status_code",
+          "assert": "equal",
+          "expect": "OK",
+          "msg": "check status_code"
+        }
+      ]
+    },
+    {
+      "name": "gRPC 登录",
+      "type": 2,
+      "gRPC": {
+        "ID": 15,
+        "url": "127.0.0.1:40061/user.User.Login",
+        "body": {"P":"1112", "UserName":"${UserName}"},
+        "type": "Simple",
+        "headers": {
+          "User-Func": "user.User.Login",
+          "uName": "${uName}"
+        }
+      }
+    }
+  ]
+}
