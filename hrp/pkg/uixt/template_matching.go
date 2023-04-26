@@ -7,20 +7,16 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"io/ioutil"
 	"log"
 	"math"
-	"os"
 
 	"github.com/pkg/errors"
 	"gocv.io/x/gocv"
-
-	"github.com/httprunner/httprunner/v4/hrp/internal/builtin"
 )
 
 const (
 	// TmCcoeffNormed maps to TM_CCOEFF_NORMED
-	TmCcoeffNormed TemplateMatchMode = iota
+	TmCcoeffNormed MatchMode = iota
 	// TmSqdiff maps to TM_SQDIFF
 	TmSqdiff
 	// TmSqdiffNormed maps to TM_SQDIFF_NORMED
@@ -44,109 +40,6 @@ const (
 	DmNotMatch
 )
 
-// extendCV 获得扩展后的 Driver，
-// 并指定匹配阀值，
-// 获取当前设备的 Scale，
-// 默认匹配模式为 TmCcoeffNormed，
-// 默认关闭 OpenCV 匹配值计算后的输出
-func (dExt *DriverExt) extendCV(options ...CVOption) (err error) {
-	for _, option := range options {
-		option(&dExt.CVArgs)
-	}
-
-	if dExt.threshold == 0 {
-		dExt.threshold = 0.95 // default threshold
-	}
-	if dExt.matchMode == 0 {
-		dExt.matchMode = TmCcoeffNormed // default match mode
-	}
-	Debug(DebugMode(DmOff))
-	return
-}
-
-func (dExt *DriverExt) Debug(dm DebugMode) {
-	Debug(DebugMode(dm))
-}
-
-func (dExt *DriverExt) OnlyOnceThreshold(threshold float64) (newExt *DriverExt) {
-	newExt = new(DriverExt)
-	newExt.Driver = dExt.Driver
-	newExt.scale = dExt.scale
-	newExt.matchMode = dExt.matchMode
-	newExt.threshold = threshold
-	return
-}
-
-func (dExt *DriverExt) OnlyOnceMatchMode(matchMode TemplateMatchMode) (newExt *DriverExt) {
-	newExt = new(DriverExt)
-	newExt.Driver = dExt.Driver
-	newExt.scale = dExt.scale
-	newExt.matchMode = matchMode
-	newExt.threshold = dExt.threshold
-	return
-}
-
-// func (sExt *DriverExt) findImgRect(search string) (rect image.Rectangle, err error) {
-// 	pathSource := filepath.Join(sExt.pathname, GenFilename())
-// 	if err = sExt.driver.ScreenshotToDisk(pathSource); err != nil {
-// 		return image.Rectangle{}, err
-// 	}
-//
-// 	if rect, err = FindImageRectFromDisk(pathSource, search, float32(sExt.Threshold), TemplateMatchMode(sExt.MatchMode)); err != nil {
-// 		return image.Rectangle{}, err
-// 	}
-// 	return
-// }
-
-func (dExt *DriverExt) FindAllImageRect(search string) (rects []image.Rectangle, err error) {
-	var bufSource, bufSearch *bytes.Buffer
-	if bufSearch, err = getBufFromDisk(search); err != nil {
-		return nil, err
-	}
-	if bufSource, err = dExt.TakeScreenShot(builtin.GenNameWithTimestamp("step_%d_cv")); err != nil {
-		return nil, err
-	}
-
-	if rects, err = FindAllImageRectsFromRaw(bufSource, bufSearch, float32(dExt.threshold), TemplateMatchMode(dExt.matchMode)); err != nil {
-		return nil, err
-	}
-	return
-}
-
-func (dExt *DriverExt) FindImageRectInUIKit(imagePath string, options ...DataOption) (x, y, width, height float64, err error) {
-	var bufSource, bufSearch *bytes.Buffer
-	if bufSearch, err = getBufFromDisk(imagePath); err != nil {
-		return 0, 0, 0, 0, err
-	}
-	if bufSource, err = dExt.TakeScreenShot(builtin.GenNameWithTimestamp("step_%d_cv")); err != nil {
-		return 0, 0, 0, 0, err
-	}
-
-	var rect image.Rectangle
-	if rect, err = FindImageRectFromRaw(bufSource, bufSearch, float32(dExt.threshold), TemplateMatchMode(dExt.matchMode)); err != nil {
-		return 0, 0, 0, 0, err
-	}
-
-	// if rect, err = dExt.findImgRect(search); err != nil {
-	// 	return 0, 0, 0, 0, err
-	// }
-	x, y, width, height = dExt.MappingToRectInUIKit(rect)
-	return
-}
-
-func getBufFromDisk(name string) (*bytes.Buffer, error) {
-	var f *os.File
-	var err error
-	if f, err = os.Open(name); err != nil {
-		return nil, err
-	}
-	var all []byte
-	if all, err = ioutil.ReadAll(f); err != nil {
-		return nil, err
-	}
-	return bytes.NewBuffer(all), nil
-}
-
 var debug = DmOff
 
 const dmOutputMsg = `[DEBUG] The current value is '%.4f', the expected value is '%.4f'`
@@ -159,9 +52,13 @@ const DefaultMatchMode = TmCcoeffNormed
 
 var fillColor = color.RGBA{R: 255, G: 255, B: 255, A: 0}
 
-func FindImageLocationFromRaw(source, search *bytes.Buffer, threshold float32, matchMode ...TemplateMatchMode) (loc image.Point, err error) {
+func init() {
+	Debug(DebugMode(DmOff))
+}
+
+func FindImageLocationFromRaw(source, search *bytes.Buffer, threshold float32, matchMode ...MatchMode) (loc image.Point, err error) {
 	if len(matchMode) == 0 {
-		matchMode = []TemplateMatchMode{DefaultMatchMode}
+		matchMode = []MatchMode{DefaultMatchMode}
 	}
 	var matImage, matTpl gocv.Mat
 	if matImage, matTpl, err = getMatsFromRaw(source, search, gocv.IMReadGrayScale); err != nil {
@@ -174,9 +71,9 @@ func FindImageLocationFromRaw(source, search *bytes.Buffer, threshold float32, m
 	return getMatchingLocation(matImage, matTpl, threshold, matchMode[0])
 }
 
-func FindImageLocationFromDisk(source, search string, threshold float32, matchMode ...TemplateMatchMode) (loc image.Point, err error) {
+func FindImageLocationFromDisk(source, search string, threshold float32, matchMode ...MatchMode) (loc image.Point, err error) {
 	if len(matchMode) == 0 {
-		matchMode = []TemplateMatchMode{DefaultMatchMode}
+		matchMode = []MatchMode{DefaultMatchMode}
 	}
 	var matImage, matTpl gocv.Mat
 	if matImage, matTpl, err = getMatsFromDisk(source, search, gocv.IMReadGrayScale); err != nil {
@@ -190,9 +87,9 @@ func FindImageLocationFromDisk(source, search string, threshold float32, matchMo
 	return getMatchingLocation(matImage, matTpl, threshold, matchMode[0])
 }
 
-func FindAllImageLocationsFromDisk(source, search string, threshold float32, matchMode ...TemplateMatchMode) (locs []image.Point, err error) {
+func FindAllImageLocationsFromDisk(source, search string, threshold float32, matchMode ...MatchMode) (locs []image.Point, err error) {
 	if len(matchMode) == 0 {
-		matchMode = []TemplateMatchMode{DefaultMatchMode}
+		matchMode = []MatchMode{DefaultMatchMode}
 	}
 	var matImage, matTpl gocv.Mat
 	if matImage, matTpl, err = getMatsFromDisk(source, search, gocv.IMReadGrayScale); err != nil {
@@ -224,9 +121,9 @@ func FindAllImageLocationsFromDisk(source, search string, threshold float32, mat
 	return locs, nil
 }
 
-func FindAllImageLocationsFromRaw(source, search *bytes.Buffer, threshold float32, matchMode ...TemplateMatchMode) (locs []image.Point, err error) {
+func FindAllImageLocationsFromRaw(source, search *bytes.Buffer, threshold float32, matchMode ...MatchMode) (locs []image.Point, err error) {
 	if len(matchMode) == 0 {
-		matchMode = []TemplateMatchMode{DefaultMatchMode}
+		matchMode = []MatchMode{DefaultMatchMode}
 	}
 	var matImage, matTpl gocv.Mat
 	if matImage, matTpl, err = getMatsFromRaw(source, search, gocv.IMReadGrayScale); err != nil {
@@ -270,7 +167,7 @@ func getPts(loc image.Point, width, height int) [][]image.Point {
 	}
 }
 
-func FindImageRectFromDisk(source, search string, threshold float32, matchMode ...TemplateMatchMode) (rect image.Rectangle, err error) {
+func FindImageRectFromDisk(source, search string, threshold float32, matchMode ...MatchMode) (rect image.Rectangle, err error) {
 	var matTpl gocv.Mat
 	if _, matTpl, err = getMatsFromDisk(source, search, gocv.IMReadGrayScale); err != nil {
 		return image.Rectangle{}, err
@@ -287,7 +184,7 @@ func FindImageRectFromDisk(source, search string, threshold float32, matchMode .
 	return
 }
 
-func FindAllImageRectsFromDisk(source, search string, threshold float32, matchMode ...TemplateMatchMode) (rects []image.Rectangle, err error) {
+func FindAllImageRectsFromDisk(source, search string, threshold float32, matchMode ...MatchMode) (rects []image.Rectangle, err error) {
 	var matTpl gocv.Mat
 	if _, matTpl, err = getMatsFromDisk(source, search, gocv.IMReadGrayScale); err != nil {
 		return nil, err
@@ -309,7 +206,7 @@ func FindAllImageRectsFromDisk(source, search string, threshold float32, matchMo
 	return
 }
 
-func FindImageRectFromRaw(source, search *bytes.Buffer, threshold float32, matchMode ...TemplateMatchMode) (rect image.Rectangle, err error) {
+func FindImageRectFromRaw(source, search *bytes.Buffer, threshold float32, matchMode ...MatchMode) (rect image.Rectangle, err error) {
 	var matTpl gocv.Mat
 	if _, matTpl, err = getMatsFromRaw(source, search, gocv.IMReadGrayScale); err != nil {
 		return image.Rectangle{}, err
@@ -326,7 +223,7 @@ func FindImageRectFromRaw(source, search *bytes.Buffer, threshold float32, match
 	return
 }
 
-func FindAllImageRectsFromRaw(source, search *bytes.Buffer, threshold float32, matchMode ...TemplateMatchMode) (rects []image.Rectangle, err error) {
+func FindAllImageRectsFromRaw(source, search *bytes.Buffer, threshold float32, matchMode ...MatchMode) (rects []image.Rectangle, err error) {
 	var matTpl gocv.Mat
 	if _, matTpl, err = getMatsFromRaw(source, search, gocv.IMReadGrayScale); err != nil {
 		return nil, err
@@ -401,7 +298,7 @@ func getMatsFromRaw(bufImage, bufTpl *bytes.Buffer, flags gocv.IMReadFlag) (matI
 }
 
 // getMatchingLocation 获取匹配的图片位置
-func getMatchingLocation(matImage gocv.Mat, matTpl gocv.Mat, threshold float32, matchMode TemplateMatchMode) (loc image.Point, err error) {
+func getMatchingLocation(matImage gocv.Mat, matTpl gocv.Mat, threshold float32, matchMode MatchMode) (loc image.Point, err error) {
 	if threshold > 1 {
 		threshold = 1.0
 	}
@@ -431,7 +328,7 @@ func getMatchingLocation(matImage gocv.Mat, matTpl gocv.Mat, threshold float32, 
 }
 
 // getMatchingResult 匹配图片并返回匹配值和位置
-func getMatchingResult(matImage gocv.Mat, matTpl gocv.Mat, matchMode TemplateMatchMode) (minVal float32, maxVal float32, minLoc image.Point, maxLoc image.Point) {
+func getMatchingResult(matImage gocv.Mat, matTpl gocv.Mat, matchMode MatchMode) (minVal float32, maxVal float32, minLoc image.Point, maxLoc image.Point) {
 	matResult, tmpMask := gocv.NewMat(), gocv.NewMat()
 	defer func() {
 		_ = matResult.Close()
@@ -443,7 +340,7 @@ func getMatchingResult(matImage gocv.Mat, matTpl gocv.Mat, matchMode TemplateMat
 }
 
 // getValLoc 根据不同的匹配模式返回匹配值和位置
-func getValLoc(minVal float32, maxVal float32, minLoc image.Point, maxLoc image.Point, matchMode TemplateMatchMode) (val float32, loc image.Point) {
+func getValLoc(minVal float32, maxVal float32, minLoc image.Point, maxLoc image.Point, matchMode MatchMode) (val float32, loc image.Point) {
 	val, loc = maxVal, maxLoc
 
 	switch matchMode {

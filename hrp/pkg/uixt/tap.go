@@ -5,6 +5,10 @@ import (
 )
 
 func (dExt *DriverExt) TapAbsXY(x, y float64, options ...DataOption) error {
+	// close popup if necessary
+	if dExt.ClosePopup {
+		dExt.ClosePopupHandler()
+	}
 	// tap on absolute coordinate [x, y]
 	return dExt.Driver.TapFloat(x, y, options...)
 }
@@ -22,6 +26,10 @@ func (dExt *DriverExt) TapXY(x, y float64, options ...DataOption) error {
 }
 
 func (dExt *DriverExt) GetTextXY(ocrText string, options ...DataOption) (point PointF, err error) {
+	// close popup if necessary
+	if dExt.ClosePopup {
+		dExt.ClosePopupHandler()
+	}
 	x, y, width, height, err := dExt.FindTextByOCR(ocrText, options...)
 	if err != nil {
 		return PointF{}, err
@@ -35,6 +43,10 @@ func (dExt *DriverExt) GetTextXY(ocrText string, options ...DataOption) (point P
 }
 
 func (dExt *DriverExt) GetTextXYs(ocrText []string, options ...DataOption) (points []PointF, err error) {
+	// close popup if necessary
+	if dExt.ClosePopup {
+		dExt.ClosePopupHandler()
+	}
 	ps, err := dExt.FindTextsByOCR(ocrText, options...)
 	if err != nil {
 		return nil, err
@@ -52,6 +64,10 @@ func (dExt *DriverExt) GetTextXYs(ocrText []string, options ...DataOption) (poin
 }
 
 func (dExt *DriverExt) GetImageXY(imagePath string, options ...DataOption) (point PointF, err error) {
+	// close popup if necessary
+	if dExt.ClosePopup {
+		dExt.ClosePopupHandler()
+	}
 	x, y, width, height, err := dExt.FindImageRectInUIKit(imagePath, options...)
 	if err != nil {
 		return PointF{}, err
@@ -116,6 +132,11 @@ func (dExt *DriverExt) DoubleTapXY(x, y float64) error {
 		return fmt.Errorf("x, y percentage should be < 1, got x=%v, y=%v", x, y)
 	}
 
+	// close popup if necessary
+	if dExt.ClosePopup {
+		dExt.ClosePopupHandler()
+	}
+
 	x = x * float64(dExt.windowSize.Width)
 	y = y * float64(dExt.windowSize.Height)
 	return dExt.Driver.DoubleTapFloat(x, y)
@@ -126,6 +147,12 @@ func (dExt *DriverExt) DoubleTap(param string) (err error) {
 }
 
 func (dExt *DriverExt) DoubleTapOffset(param string, xOffset, yOffset float64) (err error) {
+
+	// close popup if necessary
+	if dExt.ClosePopup {
+		dExt.ClosePopupHandler()
+	}
+
 	var x, y, width, height float64
 	if x, y, width, height, err = dExt.FindUIRectInUIKit(param); err != nil {
 		return err

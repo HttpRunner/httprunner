@@ -82,6 +82,13 @@ var (
 )
 
 // CV related: [90, 100)
+var (
+	CVEnvMissedError         = errors.New("CV env missed error")      // 90
+	CVRequestError           = errors.New("CV prepare request error") // 91
+	CVServiceConnectionError = errors.New("CV service connect error") // 92
+	CVResponseError          = errors.New("CV parse response error")  // 93
+	CVImageNotFoundError     = errors.New("CV image not found")       // 94
+)
 
 var errorsMap = map[error]int{
 	// environment

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/httprunner/httprunner/v4/hrp/internal/env"
 	"net"
 	"os/exec"
 	"strings"
@@ -59,6 +60,12 @@ func WithAdbLogOn(logOn bool) AndroidDeviceOption {
 	}
 }
 
+func WithAdbClosePopup(isTrue bool) AndroidDeviceOption {
+	return func(device *AndroidDevice) {
+		device.ClosePopup = isTrue
+	}
+}
+
 func GetAndroidDeviceOptions(dev *AndroidDevice) (deviceOptions []AndroidDeviceOption) {
 	if dev.SerialNumber != "" {
 		deviceOptions = append(deviceOptions, WithSerialNumber(dev.SerialNumber))
@@ -74,6 +81,9 @@ func GetAndroidDeviceOptions(dev *AndroidDevice) (deviceOptions []AndroidDeviceO
 	}
 	if dev.LogOn {
 		deviceOptions = append(deviceOptions, WithAdbLogOn(true))
+	}
+	if dev.ClosePopup {
+		deviceOptions = append(deviceOptions, WithAdbClosePopup(true))
 	}
 	return
 }
@@ -145,6 +155,7 @@ type AndroidDevice struct {
 	UIA2IP       string `json:"uia2_ip,omitempty" yaml:"uia2_ip,omitempty"`     // uiautomator2 server ip
 	UIA2Port     int    `json:"uia2_port,omitempty" yaml:"uia2_port,omitempty"` // uiautomator2 server port
 	LogOn        bool   `json:"log_on,omitempty" yaml:"log_on,omitempty"`
+	ClosePopup   bool   `json:"close_popup,omitempty" yaml:"close_popup,omitempty"`
 }
 
 func (dev *AndroidDevice) UUID() string {
@@ -157,10 +168,11 @@ func (dev *AndroidDevice) LogEnabled() bool {
 
 func (dev *AndroidDevice) NewDriver(capabilities Capabilities) (driverExt *DriverExt, err error) {
 	var driver WebDriver
-	if dev.UIA2 {
-		driver, err = dev.NewUSBDriver(capabilities)
-	} else {
+	disableUIA2 := env.DISABLE_UIAUTOMATOR_SERVER == "true"
+	if disableUIA2 {
 		driver, err = dev.NewAdbDriver()
+	} else {
+		driver, err = dev.NewUSBDriver(capabilities)
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to init UIA driver")
@@ -182,6 +194,8 @@ func (dev *AndroidDevice) NewDriver(capabilities Capabilities) (driverExt *Drive
 			return nil, err
 		}
 	}
+
+	driverExt.ClosePopup = dev.ClosePopup
 
 	return driverExt, nil
 }

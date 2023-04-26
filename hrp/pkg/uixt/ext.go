@@ -47,6 +47,8 @@ const (
 	SelectorOCR           string = "ui_ocr"
 	SelectorImage         string = "ui_image"
 	SelectorForegroundApp string = "ui_foreground_app"
+	ScenarioType          string = "scenario_type"
+
 	// assertions
 	AssertionEqual     string = "equal"
 	AssertionNotEqual  string = "not_equal"
@@ -187,17 +189,26 @@ func WithIgnoreNotFoundError(ignoreError bool) ActionOption {
 	}
 }
 
-// TemplateMatchMode is the type of the template matching operation.
-type TemplateMatchMode int
+type MatchMethod int
+
+// MatchMode is the type of the matching operation.
+type MatchMode int
 
 type CVArgs struct {
-	matchMode TemplateMatchMode
-	threshold float64
+	matchMethod MatchMethod
+	matchMode   MatchMode
+	threshold   float64
 }
 
 type CVOption func(*CVArgs)
 
-func WithTemplateMatchMode(mode TemplateMatchMode) CVOption {
+func WithCVMatchMethod(method MatchMethod) CVOption {
+	return func(args *CVArgs) {
+		args.matchMethod = method
+	}
+}
+
+func WithCVMatchMode(mode MatchMode) CVOption {
 	return func(args *CVArgs) {
 		args.matchMode = mode
 	}
@@ -216,8 +227,12 @@ type DriverExt struct {
 	frame           *bytes.Buffer
 	doneMjpegStream chan bool
 	scale           float64
-	ocrService      OCRService // used to get text from image
-	screenShots     []string   // cache screenshot paths
+	ocrService      OCRService    // used to get text from image
+	screenShots     []string      // cache screenshot paths
+	StartTime       time.Time     // used to associate screenshots name
+	perfStop        chan struct{} // stop performance monitor
+	perfData        []string      // save perf data
+	ClosePopup      bool
 
 	CVArgs
 }
@@ -375,6 +390,11 @@ func (dExt *DriverExt) IsAppInForeground(packageName string) bool {
 		return false
 	}
 	return true
+}
+
+func (dExt *DriverExt) IsScenarioType(scenarioType string) bool {
+	_, _, _, _, err := dExt.FindImageRectInUIKit(scenarioType)
+	return err == nil
 }
 
 var errActionNotImplemented = errors.New("UI action not implemented")
@@ -736,6 +756,8 @@ func (dExt *DriverExt) DoValidation(check, assert, expected string, message ...s
 		result = (dExt.IsImageExist(expected) == exp)
 	case SelectorForegroundApp:
 		result = (dExt.IsAppInForeground(expected) == exp)
+	case ScenarioType:
+		result, _ = dExt.ScenarioDetect(expected)
 	}
 
 	if !result {

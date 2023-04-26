@@ -274,7 +274,7 @@ func (v *responseObject) searchRegexp(expr string) interface{} {
 	return expr
 }
 
-func validateUI(ud *uixt.DriverExt, iValidators []interface{}) (validateResults []*ValidationResult, err error) {
+func validateUI(ud *uixt.DriverExt, iValidators []interface{}, parser *Parser, variablesMapping map[string]interface{}) (validateResults []*ValidationResult, err error) {
 	for _, iValidator := range iValidators {
 		validator, ok := iValidator.(Validator)
 		if !ok {
@@ -287,14 +287,20 @@ func validateUI(ud *uixt.DriverExt, iValidators []interface{}) (validateResults 
 		}
 
 		// parse check value
-		if !strings.HasPrefix(validator.Check, "ui_") {
+		if !strings.HasPrefix(validator.Check, "ui_") && !strings.HasPrefix(validator.Check, "scenario") {
 			validataResult.CheckResult = "skip"
 			log.Warn().Interface("validator", validator).Msg("skip validator")
 			validateResults = append(validateResults, validataResult)
 			continue
 		}
 
-		expected, ok := validator.Expect.(string)
+		// parse expected value
+		expectValue, err := parser.Parse(validator.Expect, variablesMapping)
+		if err != nil {
+			return nil, errors.New("validator expect should be string")
+		}
+
+		expected, ok := expectValue.(string)
 		if !ok {
 			return nil, errors.New("validator expect should be string")
 		}

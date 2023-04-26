@@ -3,6 +3,8 @@ package uixt
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"io"
 	builtinLog "log"
 	"net"
@@ -12,9 +14,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
-
-	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 
 	"github.com/httprunner/httprunner/v4/hrp/internal/code"
 	"github.com/httprunner/httprunner/v4/hrp/internal/env"
@@ -122,7 +121,11 @@ func WithXCTest(bundleID string) IOSDeviceOption {
 		device.XCTestBundleID = bundleID
 	}
 }
-
+func WithClosePopup(isTrue bool) IOSDeviceOption {
+	return func(device *IOSDevice) {
+		device.ClosePopup = isTrue
+	}
+}
 func WithIOSPerfOptions(options ...gidevice.PerfOption) IOSDeviceOption {
 	return func(device *IOSDevice) {
 		device.PerfOptions = &gidevice.PerfOptions{}
@@ -214,6 +217,9 @@ func GetIOSDeviceOptions(dev *IOSDevice) (deviceOptions []IOSDeviceOption) {
 	if dev.DismissAlertButtonSelector != "" {
 		deviceOptions = append(deviceOptions, WithDismissAlertButtonSelector(dev.DismissAlertButtonSelector))
 	}
+	if dev.ClosePopup {
+		deviceOptions = append(deviceOptions, WithClosePopup(true))
+	}
 	return
 }
 
@@ -280,6 +286,8 @@ type IOSDevice struct {
 	// pcap monitor
 	pcapStop chan struct{} // stop pcap monitor
 	pcapFile string        // saved pcap file path
+
+	ClosePopup bool `json:"close_popup,omitempty" yaml:"close_popup,omitempty"`
 }
 
 func (dev *IOSDevice) UUID() string {
@@ -352,6 +360,8 @@ func (dev *IOSDevice) NewDriver(capabilities Capabilities) (driverExt *DriverExt
 			return nil, err
 		}
 	}
+
+	driverExt.ClosePopup = dev.ClosePopup
 
 	return driverExt, nil
 }
