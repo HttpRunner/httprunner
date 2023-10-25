@@ -28,7 +28,7 @@ require (
 	gocv.io/x/gocv v0.32.1
 	golang.org/x/net v0.14.0
 	golang.org/x/oauth2 v0.8.0
-	google.golang.org/grpc v1.57.0
+	google.golang.org/grpc v1.57.1
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/yaml.v3 v3.0.1
 	howett.net/plist v1.0.0
