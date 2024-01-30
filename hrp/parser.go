@@ -45,8 +45,9 @@ func buildURL(baseURL, stepURL string, queryParams url.Values) (fullUrl *url.URL
 			}
 		}
 
-		// ensure path suffix '/' exists
-		if uStep.RawQuery == "" {
+		// Splice suffixes as needed "/"
+		isSuffix := strings.HasSuffix(stepURL, "/") || (strings.HasSuffix(baseURL, "/") && stepURL == "")
+		if uStep.RawQuery == "" && isSuffix {
 			uStep.Path = strings.TrimRight(uStep.Path, "/") + "/"
 		}
 
