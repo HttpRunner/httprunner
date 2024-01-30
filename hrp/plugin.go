@@ -45,9 +45,12 @@ func initPlugin(path, venv string, logOn bool) (plugin funplugin.IPlugin, err er
 
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
-
+	var KeygenPyPluginPath string
+	if strings.HasSuffix(pluginPath, ".py") {
+		// register funppy plugin
+		KeygenPyPluginPath := filepath.Join(filepath.Dir(pluginPath), PluginPySourceGenFile)
 	// reuse plugin instance if it already initialized
-	if p, ok := pluginMap.Load(pluginPath); ok {
+	if p, ok := pluginMap.Load(KeygenPyPluginPath); ok {
 		return p.(funplugin.IPlugin), nil
 	}
 
