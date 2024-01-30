@@ -94,12 +94,12 @@ func GetCurrentPidCPUUsage() float64 {
 	currentPid := os.Getpid()
 	p, err := process.NewProcess(int32(currentPid))
 	if err != nil {
-		log.Error().Err(err).Msg(fmt.Sprintf("failed to get CPU percent\n"))
+		log.Error().Err(err).Msg("failed to get CPU percent\n")
 		return 0.0
 	}
 	percent, err := p.CPUPercent()
 	if err != nil {
-		log.Error().Err(err).Msg(fmt.Sprintf("failed to get CPU percent\n"))
+		log.Error().Err(err).Msg("failed to get CPU percent\n")
 		return 0.0
 	}
 	return percent
@@ -110,12 +110,12 @@ func GetCurrentPidCPUPercent() float64 {
 	currentPid := os.Getpid()
 	p, err := process.NewProcess(int32(currentPid))
 	if err != nil {
-		log.Error().Err(err).Msg(fmt.Sprintf("failed to get CPU percent\n"))
+		log.Error().Err(err).Msg("failed to get CPU percent\n")
 		return 0.0
 	}
 	percent, err := p.Percent(time.Second)
 	if err != nil {
-		log.Error().Err(err).Msg(fmt.Sprintf("failed to get CPU percent\n"))
+		log.Error().Err(err).Msg("failed to get CPU percent\n")
 		return 0.0
 	}
 	return percent
@@ -138,12 +138,12 @@ func GetCurrentPidMemoryUsage() float64 {
 	currentPid := os.Getpid()
 	p, err := process.NewProcess(int32(currentPid))
 	if err != nil {
-		log.Error().Err(err).Msg(fmt.Sprintf("failed to get CPU percent\n"))
+		log.Error().Err(err).Msg("failed to get CPU percent\n")
 		return 0.0
 	}
 	percent, err := p.MemoryPercent()
 	if err != nil {
-		log.Error().Err(err).Msg(fmt.Sprintf("failed to get CPU percent\n"))
+		log.Error().Err(err).Msg("failed to get CPU percent\n")
 		return 0.0
 	}
 	return float64(percent)

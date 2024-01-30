@@ -349,7 +349,7 @@ func (r *runner) reportTestResult() {
 	}
 	duration := time.Duration(entryTotalOutput.LastRequestTimestamp-entryTotalOutput.StartTime) * time.Millisecond
 	currentTime := time.Now()
-	println(fmt.Sprint("=========================================== Statistics Summary =========================================="))
+	println("=========================================== Statistics Summary ==========================================")
 	println(fmt.Sprintf("Current time: %s, Users: %v, Duration: %v, Accumulated Transactions: %d Passed, %d Failed",
 		currentTime.Format("2006/01/02 15:04:05"), r.controller.getCurrentClientsNum(), duration, r.stats.transactionPassed, r.stats.transactionFailed))
 	table := tablewriter.NewWriter(os.Stdout)
