@@ -145,9 +145,16 @@ class HttpRunner(object):
         parsed_request_dict = parse_data(
             request_dict, step.variables, self.__project_meta.functions
         )
+        case_id = f"HRUN-{self.__case_id}-{str(int(time.time() * 1000))[-6:]}"
+        # 增加x-trace-id
+        parsed_request_dict["headers"].setdefault(
+            "x-trace-id",
+            case_id,
+        )
+
         parsed_request_dict["headers"].setdefault(
             "HRUN-Request-ID",
-            f"HRUN-{self.__case_id}-{str(int(time.time() * 1000))[-6:]}",
+            case_id,
         )
         step.variables["request"] = parsed_request_dict
 
@@ -446,7 +453,14 @@ class HttpRunner(object):
             # update allure report meta
             allure.dynamic.title(self.__config.name)
             allure.dynamic.description(f"TestCase ID: {self.__case_id}")
-
+            git_repo = self.__project_meta.env.get("git_repo", '')
+            file_ext = self.__project_meta.env.get("file_ext", '')
+            if git_repo != '' and file_ext != '':
+                from httprunner.loader import  convert_relative_project_root_dir
+                # 由于运行时加载的是py文件，所以这里link的时候得做一下替换
+                link = git_repo + convert_relative_project_root_dir(self.__config.path)[:-8] + '.' +file_ext
+                allure.dynamic.link(link)
+            
         logger.info(
             f"Start to run testcase: {self.__config.name}, TestCase ID: {self.__case_id}"
         )
@@ -456,5 +470,6 @@ class HttpRunner(object):
                 TestCase(config=self.__config, teststeps=self.__teststeps)
             )
         finally:
+            allure.attach.file(self.__log_path, name="log", attachment_type=allure.attachment_type.TEXT)
             logger.remove(log_handler)
             logger.info(f"generate testcase log: {self.__log_path}")

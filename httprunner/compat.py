@@ -217,12 +217,35 @@ def ensure_testcase_v3_api(api_content: Dict) -> Dict:
 
 def ensure_testcase_v3(test_content: Dict) -> Dict:
     logger.info("ensure compatibility with testcase format v2")
-
-    v3_content = {"config": test_content["config"], "teststeps": []}
+    logger.info(f"test_content: {test_content}")
+    v3_content = {"config": test_content["config"], "teststeps": [], "meta": {"path": ""}}
 
     if "teststeps" not in test_content:
         logger.error(f"Miss teststeps: {test_content}")
         sys.exit(1)
+    
+    # 分析test_content["config"]中的config，如果没有meta
+    if "meta" not in test_content['config']:
+        logger.error(f"Miss meta test_file: {test_content['config']['path']}")
+        logger.error(f"file config content : {test_content['config']}")
+        sys.exit(1)
+    else:
+        # 判断mata中是否有author,description,service,controller没有就抛错
+        if "author" not in test_content['config']['meta']:
+            logger.error(f"Miss author: {test_content}")
+            sys.exit(1)
+        if "description" not in test_content['config']['meta']:
+            logger.error(f"Miss description: {test_content}")
+            sys.exit(1)
+        if "service" not in test_content['config']['meta']:
+            logger.error(f"Miss service: {test_content}")
+            sys.exit(1)
+        if "controller" not in test_content['config']['meta']:
+            logger.error(f"Miss controller: {test_content}")
+            sys.exit(1)
+        
+        v3_content["meta"] = test_content['config']['meta']
+        v3_content["meta"]["path"] = convert_relative_project_root_dir(test_content['config']['path'])
 
     if not isinstance(test_content["teststeps"], list):
         logger.error(

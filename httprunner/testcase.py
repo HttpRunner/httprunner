@@ -213,6 +213,14 @@ class StepRequestValidation(object):
             {"type_match": [jmes_path, expected_value, message]}
         )
         return self
+    
+    def assert_custom(
+        self, custom_comparator, jmes_path: Text, expected_value: Any, message: Text = ""
+    ) -> "StepRequestValidation":
+        self.__step_context.validators.append(
+            {"custom": [custom_comparator, jmes_path, expected_value, message]}
+        )
+        return self
 
     def perform(self) -> TStep:
         return self.__step_context

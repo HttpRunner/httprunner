@@ -88,30 +88,47 @@ def uniform_validator(validator):
         # format2
         comparator = list(validator.keys())[0]
         compare_values = validator[comparator]
-
-        if not isinstance(compare_values, list) or len(compare_values) not in [2, 3]:
-            raise ParamsError(f"invalid validator: {validator}")
-
-        check_item = compare_values[0]
-        expect_value = compare_values[1]
-        if len(compare_values) == 3:
-            message = compare_values[2]
+        if comparator == "custom":
+            custom_comparator = compare_values[0]
+            check_item = compare_values[1]
+            expect_value = compare_values[2]
+            if len(compare_values) == 4:
+                message = compare_values[3]
+            else:
+                # len(compare_values) == 2
+                message = ""
         else:
-            # len(compare_values) == 2
-            message = ""
+            if not isinstance(compare_values, list) or len(compare_values) not in [2, 3]:
+                raise ParamsError(f"invalid validator: {validator}")
+
+            check_item = compare_values[0]
+            expect_value = compare_values[1]
+            if len(compare_values) == 3:
+                message = compare_values[2]
+            else:
+                # len(compare_values) == 2
+                message = ""
 
     else:
         raise ParamsError(f"invalid validator: {validator}")
 
     # uniform comparator, e.g. lt => less_than, eq => equals
     assert_method = get_uniform_comparator(comparator)
-
-    return {
-        "check": check_item,
-        "expect": expect_value,
-        "assert": assert_method,
-        "message": message,
-    }
+    if assert_method == "custom":
+        return {
+            "check": check_item,
+            "expect": expect_value,
+            "assert": assert_method,
+            "message": message,
+            "custom_comparator": custom_comparator,
+        }
+    else:
+        return {
+            "check": check_item,
+            "expect": expect_value,
+            "assert": assert_method,
+            "message": message,
+        }
 
 
 class ResponseObject(object):
@@ -194,7 +211,6 @@ class ResponseObject(object):
         variables_mapping: VariablesMapping = None,
         functions_mapping: FunctionsMapping = None,
     ):
-
         variables_mapping = variables_mapping or {}
         functions_mapping = functions_mapping or {}
 
@@ -206,12 +222,10 @@ class ResponseObject(object):
         failures = []
 
         for v in validators:
-
             if "validate_extractor" not in self.validation_results:
                 self.validation_results["validate_extractor"] = []
 
             u_validator = uniform_validator(v)
-
             # check item
             check_item = u_validator["check"]
             if "$" in check_item:
@@ -229,7 +243,11 @@ class ResponseObject(object):
 
             # comparator
             assert_method = u_validator["assert"]
-            assert_func = get_mapping_function(assert_method, functions_mapping)
+            if assert_method != 'custom':
+                assert_func = get_mapping_function(assert_method, functions_mapping)
+            else:
+                assert_method = u_validator["custom_comparator"]
+                assert_func = get_mapping_function(assert_method, functions_mapping)
 
             # expect item
             expect_item = u_validator["expect"]
