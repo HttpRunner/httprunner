@@ -29,28 +29,28 @@ classifiers = [
 include = ["docs/CHANGELOG.md"]
 
 [tool.poetry.dependencies]
-python = "^3.7"
-pydantic = "~1.8"   # >=1.8.0 <1.9.0
-loguru = "^0.4.1"
-jmespath = "^0.9.5"
-black = "^22.3.0"
-pytest = "^7.1.1"
-pytest-html = "^3.1.1"
-sentry-sdk = "^0.14.4"
-allure-pytest = {version = "^2.8.16", optional = true}
-requests-toolbelt = {version = "^0.10.1", optional = true}
-filetype = {version = "^1.0.7", optional = true}
-Brotli = "^1.0.9"
-jinja2 = "^3.0.3"
-toml = "^0.10.2"
-sqlalchemy = {version = "^1.4.36", optional = true}
-pymysql = {version = "^1.0.2",optional = true}
-cython = {version = "^0.29.28", optional = true}
-thriftpy2 = {version = "^0.4.14", optional = true}
-thrift = {version = "^0.16.0", optional = true}
-pyyaml = "^6.0.1"
-requests = "^2.31.0"
-urllib3 = "^1.26"
+python = ">=3.7"
+pydantic = ">=1.8"   # >=1.8.0 <1.9.0
+loguru = ">=0.7.2"
+jmespath = ">=0.9.5"
+black = ">=22.3.0"
+pytest = ">=7.1.1"
+pytest-html = ">=3.1.1"
+sentry-sdk = ">=0.14.4"
+allure-pytest = {version = ">=2.8.16", optional = true}
+requests-toolbelt = {version = ">=0.10.1", optional = true}
+filetype = {version = ">=1.0.7", optional = true}
+Brotli = ">=1.0.9"
+jinja2 = ">=3.0.3"
+toml = ">=0.10.2"
+sqlalchemy = {version = ">=1.4.36", optional = true}
+pymysql = {version = ">=1.0.2",optional = true}
+cython = {version = ">=0.29.28", optional = true}
+thriftpy2 = {version = ">=0.4.14", optional = true}
+thrift = {version = ">=0.16.0", optional = true}
+pyyaml = ">=6.0.1"
+requests = ">=2.31.0"
+urllib3 = ">=1.26"
 
 [tool.poetry.extras]
 allure = ["allure-pytest"]                  # pip install "httprunner[allure]", poetry install -E allure
@@ -59,7 +59,7 @@ sql = ["sqlalchemy","pymysql"]              # pip install "httprunner[sql]", poe
 thrift = ["cython","thrift","thriftpy2"]    # pip install "httprunner[thrift]", poetry install -E sql
 
 [tool.poetry.dev-dependencies]
-coverage = "^4.5.4"
+coverage = ">=4.5.4"
 
 [tool.poetry.scripts]
 httprunner = "httprunner.cli:main"

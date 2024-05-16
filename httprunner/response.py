@@ -45,8 +45,11 @@ def get_uniform_comparator(comparator: Text):
         "length_less_or_equals",
     ]:
         return "length_less_or_equals"
-    else:
+    elif comparator in ["contains", "contained_by", "type_match", "regex_match", "startswith", "endswith"]:
         return comparator
+    else:
+        return f"custom_{comparator}"
+
 
 
 def uniform_validator(validator):
@@ -201,6 +204,8 @@ class ResponseObjectBase(object):
 
             # comparator
             assert_method = u_validator["assert"]
+            if assert_method.startswith("custom"):
+                assert_method = assert_method.split("_", 1)[1]
             assert_func = self.parser.get_mapping_function(assert_method)
 
             # expect item
