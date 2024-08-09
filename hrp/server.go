@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io"
 	"log"
 	"net/http"
@@ -334,6 +335,17 @@ func (api *apiHandler) GetMasterInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, body, http.StatusOK)
 }
 
+func (api *apiHandler) Metrics() http.HandlerFunc {
+	registry := boomer.GetRegistry(true)
+	h := promhttp.InstrumentMetricHandler(
+		registry, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}),
+	)
+	return func(w http.ResponseWriter, r *http.Request) {
+		api.boomer.SetPrometheusMetrics()
+		h.ServeHTTP(w, r)
+	}
+}
+
 func (api *apiHandler) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -344,11 +356,12 @@ func (api *apiHandler) Handler() http.Handler {
 	mux.HandleFunc("/quit", methods(api.Quit, "GET"))
 	mux.HandleFunc("/workers", methods(api.GetWorkersInfo, "GET"))
 	mux.HandleFunc("/master", methods(api.GetMasterInfo, "GET"))
+	mux.HandleFunc("/metrics", api.Metrics())
 
 	return mux
 }
 
-func (apiHandler) ServeHTTP(http.ResponseWriter, *http.Request) {}
+func (*apiHandler) ServeHTTP(http.ResponseWriter, *http.Request) {}
 
 func (b *HRPBoomer) StartServer(ctx context.Context, addr string) {
 	h := b.NewAPIHandler()

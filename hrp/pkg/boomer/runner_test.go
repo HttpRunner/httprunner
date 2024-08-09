@@ -1,6 +1,7 @@
 package boomer
 
 import (
+	"encoding/json"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -549,4 +550,44 @@ func TestHeartbeatWorker(t *testing.T) {
 	if workerInfo2.getState() == StateMissing {
 		t.Error("expected state of worker runner is not missing, but got missing")
 	}
+}
+
+func TestHandleStat(t *testing.T) {
+	runner := newMasterRunner("localhost", 5557)
+	var d = make(map[string][]byte)
+	data := map[string]interface{}{
+		"state": 1,
+		"transactions": map[string]int64{
+			"passed": 10,
+			"failed": 2,
+		},
+		"stats": []interface{}{
+			map[string]interface{}{
+				"last_request_timestamp": 1723188340177, "max_response_time": 2703, "method": "request-GET",
+				"min_response_time": 2703, "name": "HTTP/2 get", "num_failures": 0, "num_none_requests": 0, "num_requests": 1,
+				"start_time": 0, "total_content_length": 522, "total_response_time": 2703,
+			},
+			map[string]interface{}{"last_request_timestamp": 1723188340452, "max_response_time": 43873, "method": "transaction",
+				"min_response_time": 43873, "name": "Action", "num_failures": 0, "num_none_requests": 0, "num_requests": 1,
+				"start_time": 0, "total_content_length": 0, "total_response_time": 43873},
+		},
+		"stats_total": map[string]interface{}{
+			"last_request_timestamp": 1723188340452, "max_response_time": 2703, "method": "", "min_response_time": 274, "name": "Total",
+			"num_failures": 0, "num_none_requests": 0, "num_requests": 2, "start_time": 1723188340172, "total_content_length": 1208,
+			"total_response_time": 2977,
+		},
+		"errors": map[string]interface{}{},
+	}
+	for k, v := range data {
+		d[k], _ = json.Marshal(v)
+	}
+	runner.handleStat(d)
+
+	if runner.stats.transactionPassed != 10 || runner.stats.transactionFailed != 2 {
+		t.Error("runner stats transactions not as expected")
+	}
+	if runner.stats.total.StartTime != 1723188340172 {
+		t.Error("runner.stats.total not as expected")
+	}
+
 }

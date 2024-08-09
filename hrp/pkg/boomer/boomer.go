@@ -60,6 +60,7 @@ type Profile struct {
 	CPUProfile               string        `json:"cpu-profile,omitempty" yaml:"cpu-profile,omitempty" mapstructure:"cpu-profile,omitempty"`
 	CPUProfileDuration       time.Duration `json:"cpu-profile-duration,omitempty" yaml:"cpu-profile-duration,omitempty" mapstructure:"cpu-profile-duration,omitempty"`
 	PrometheusPushgatewayURL string        `json:"prometheus-gateway,omitempty" yaml:"prometheus-gateway,omitempty" mapstructure:"prometheus-gateway,omitempty"`
+	PrometheusExporter       bool          `json:"prometheus-exporter,omitempty" yaml:"prometheus-exporter,omitempty" mapstructure:"prometheus-exporter,omitempty"`
 	DisableConsoleOutput     bool          `json:"disable-console-output,omitempty" yaml:"disable-console-output,omitempty" mapstructure:"disable-console-output,omitempty"`
 	DisableCompression       bool          `json:"disable-compression,omitempty" yaml:"disable-compression,omitempty" mapstructure:"disable-compression,omitempty"`
 	DisableKeepalive         bool          `json:"disable-keepalive,omitempty" yaml:"disable-keepalive,omitempty" mapstructure:"disable-keepalive,omitempty"`
@@ -610,4 +611,28 @@ func (b *Boomer) ResetStartTime() {
 	default:
 		b.localRunner.stats.total.resetStartTime()
 	}
+}
+
+func (b *Boomer) SetExporterMode(open bool) {
+	switch b.mode {
+	case DistributedWorkerMode:
+		b.workerRunner.exporterMode = open
+	default:
+	}
+}
+
+func (b *Boomer) SetPrometheusMetrics() {
+	output := b.masterRunner.getDataOutput()
+	userCount := int64(0)
+	workers := b.GetWorkersInfo()
+	for i := range workers {
+		worker := &workers[i] // 使用临时变量保存每次迭代的值的指针
+		worker.mutex.RLock()
+		count := worker.getUserCount()
+		worker.mutex.RUnlock()
+		userCount += count
+	}
+	output.UserCount = userCount
+	setPrometheus(output, true)
+
 }

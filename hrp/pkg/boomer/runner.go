@@ -2,6 +2,7 @@ package boomer
 
 import (
 	"fmt"
+	"github.com/httprunner/httprunner/v4/hrp/internal/json"
 	"math/rand"
 	"os"
 	"runtime/debug"
@@ -337,12 +338,13 @@ func (r *runner) reportStats() {
 	data := r.stats.collectReportData()
 	data["user_count"] = r.controller.getCurrentClientsNum()
 	data["state"] = atomic.LoadInt32(&r.state)
+	r.stats.statsToMasterChan <- data
 	r.outputOnEvent(data)
 }
 
 func (r *runner) reportTestResult() {
 	// convert stats in total
-	var statsTotal interface{} = r.stats.total.serialize()
+	var statsTotal interface{} = r.stats.totalForTestResult.serialize()
 	entryTotalOutput, err := deserializeStatsEntry(statsTotal)
 	if err != nil {
 		return
@@ -351,7 +353,7 @@ func (r *runner) reportTestResult() {
 	currentTime := time.Now()
 	println(fmt.Sprint("=========================================== Statistics Summary =========================================="))
 	println(fmt.Sprintf("Current time: %s, Users: %v, Duration: %v, Accumulated Transactions: %d Passed, %d Failed",
-		currentTime.Format("2006/01/02 15:04:05"), r.controller.getCurrentClientsNum(), duration, r.stats.transactionPassed, r.stats.transactionFailed))
+		currentTime.Format("2006/01/02 15:04:05"), r.controller.getCurrentClientsNum(), duration, r.stats.transactionPassedForTestResult, r.stats.transactionFailedForTestResult))
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Name", "# requests", "# fails", "Median", "Average", "Min", "Max", "Content Size", "# reqs/sec", "# fails/sec"})
 	row := make([]string, 10)
@@ -713,6 +715,8 @@ type workerRunner struct {
 
 	mutex      sync.Mutex
 	ignoreQuit bool
+	// whether you use prometheus exporter
+	exporterMode bool
 }
 
 func newWorkerRunner(masterHost string, masterPort int) (r *workerRunner) {
@@ -955,6 +959,26 @@ func (r *workerRunner) start() {
 
 	r.outputOnStart()
 
+	// stats to master
+	if r.exporterMode {
+		go func() {
+			for {
+				select {
+				case data := <-r.stats.statsToMasterChan:
+					var d = make(map[string][]byte)
+					var err error
+					for k, v := range data {
+						d[k], err = json.Marshal(v)
+						if err != nil {
+							log.Error().Err(err).Msg("convert to bytes failed")
+						}
+					}
+					r.client.sendChannel() <- newGenericMessage("stats", d, r.nodeID)
+				}
+			}
+		}()
+	}
+
 	go r.runTimeCheck(r.getRunTime())
 
 	go r.spawnWorkers(r.getSpawnCount(), r.getSpawnRate(), r.stoppingChan, r.spawnComplete)
@@ -974,9 +998,7 @@ func (r *workerRunner) start() {
 		if r.loop != nil {
 			r.loop = nil
 		}
-
 		close(r.doneChan)
-
 		// wait until all stats are reported successfully
 		<-r.reportedChan
 		// report test result
@@ -1032,6 +1054,7 @@ func newMasterRunner(masterBindHost string, masterBindPort int) *masterRunner {
 			closeChan:    make(chan bool),
 			wg:           sync.WaitGroup{},
 			wgMu:         sync.RWMutex{},
+			stats:        newRequestStats(),
 		},
 		masterBindHost:     masterBindHost,
 		masterBindPort:     masterBindPort,
@@ -1127,6 +1150,8 @@ func (r *masterRunner) clientListener() {
 					workerInfo.setState(StateSpawning)
 				case typeSpawningComplete:
 					workerInfo.setState(StateRunning)
+				case typeStats:
+					r.handleStat(msg.Data)
 				case typeQuit:
 					if workerInfo.getState() == StateQuitting {
 						break
@@ -1231,6 +1256,9 @@ func (r *masterRunner) run() {
 }
 
 func (r *masterRunner) start() error {
+	// reset all prometheus metrics
+	resetPrometheusMetrics()
+	r.stats.clearAll()
 	numWorkers := r.server.getAvailableClientsLength()
 	if numWorkers == 0 {
 		return errors.New("current available workers: 0")
@@ -1414,4 +1442,84 @@ func (r *masterRunner) reportStats() {
 	}
 	table.Render()
 	println()
+}
+
+func (r *masterRunner) handleStat(data map[string][]byte) {
+	var stats []statsEntry
+	var statsTotal statsEntry
+	var transactions map[string]int64
+	var sErrors map[string]map[string]interface{}
+	var err error
+	for k, v := range data {
+		switch k {
+		case "stats":
+			err = json.Unmarshal(v, &stats)
+		case "errors":
+			err = json.Unmarshal(v, &sErrors)
+		case "transactions":
+			err = json.Unmarshal(v, &transactions)
+		case "stats_total":
+			err = json.Unmarshal(v, &statsTotal)
+		}
+		if err != nil {
+			log.Error().Err(err).Msgf("Unmarshal error %s", k)
+		}
+	}
+	for _, stat := range stats {
+		r.mutex.Lock()
+		r.stats.get(stat.Name, stat.Method).extend(&stat)
+		r.mutex.Unlock()
+	}
+
+	for k, v := range sErrors {
+		sError := statsError{}
+		sError.deserialize(v)
+		if _, ok := r.stats.errors[k]; ok {
+			r.stats.errors[k].occurrences += sError.occurrences
+		} else {
+			r.stats.errors[k] = &sError
+		}
+	}
+
+	transactionsPassed := transactions["passed"]
+	transactionsFailed := transactions["failed"]
+	r.stats.transactionFailed += transactionsFailed
+	r.stats.transactionPassed += transactionsPassed
+
+	// convert stats in total
+
+	r.mutex.Lock()
+	r.stats.total.extend(&statsTotal)
+	r.mutex.Unlock()
+}
+
+func (r *masterRunner) getDataOutput() *dataOutput {
+	entryTotalOutput := convert2StatsEntryOutput(r.stats.total)
+	entryStatsOutput := make([]*statsEntryOutput, 0)
+	for _, stat := range r.stats.entries {
+		entryStatsOutput = append(entryStatsOutput, convert2StatsEntryOutput(stat))
+	}
+
+	errs := make(map[string]map[string]interface{})
+
+	for k, v := range r.stats.errors {
+		errs[k] = v.toMap()
+	}
+	output := &dataOutput{
+		UserCount:            0,
+		State:                r.getState(),
+		Duration:             entryTotalOutput.duration,
+		TotalStats:           entryTotalOutput,
+		TransactionsPassed:   r.stats.transactionPassed,
+		TransactionsFailed:   r.stats.transactionFailed,
+		TotalAvgResponseTime: entryTotalOutput.avgResponseTime,
+		TotalMaxResponseTime: float64(entryTotalOutput.MaxResponseTime),
+		TotalMinResponseTime: float64(entryTotalOutput.MinResponseTime),
+		TotalRPS:             entryTotalOutput.currentRps,
+		TotalFailRatio:       getTotalFailRatio(entryTotalOutput.NumRequests, entryTotalOutput.NumFailures),
+		TotalFailPerSec:      entryTotalOutput.currentFailPerSec,
+		Stats:                entryStatsOutput,
+		Errors:               errs,
+	}
+	return output
 }

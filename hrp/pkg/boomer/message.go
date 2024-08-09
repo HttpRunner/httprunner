@@ -8,6 +8,7 @@ const (
 	typeSpawningComplete = "spawning_complete"
 	typeQuit             = "quit"
 	typeException        = "exception"
+	typeStats            = "stats"
 )
 
 type genericMessage struct {

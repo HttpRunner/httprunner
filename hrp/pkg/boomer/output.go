@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/rs/zerolog/log"
@@ -248,20 +247,23 @@ func deserializeStatsEntry(stat interface{}) (entryOutput *statsEntryOutput, err
 	if err = json.Unmarshal(statBytes, &entry); err != nil {
 		return nil, err
 	}
+	return convert2StatsEntryOutput(&entry), nil
+}
 
+func convert2StatsEntryOutput(entry *statsEntry) *statsEntryOutput {
 	var duration float64
 	if entry.Name == "Total" {
 		duration = float64(entry.LastRequestTimestamp-entry.StartTime) / 1e3
 		if duration == 0 {
-			return nil, errors.New("no step specified")
+
 		}
 	} else {
 		duration = float64(reportStatsInterval / time.Second)
 	}
 
 	numRequests := entry.NumRequests
-	entryOutput = &statsEntryOutput{
-		statsEntry:         entry,
+	entryOutput := &statsEntryOutput{
+		statsEntry:         *entry,
 		duration:           duration,
 		medianResponseTime: getMedianResponseTime(numRequests, entry.ResponseTimes),
 		avgResponseTime:    getAvgResponseTime(numRequests, entry.TotalResponseTime),
@@ -269,7 +271,7 @@ func deserializeStatsEntry(stat interface{}) (entryOutput *statsEntryOutput, err
 		currentRps:         getCurrentRps(numRequests, duration),
 		currentFailPerSec:  getCurrentFailPerSec(entry.NumFailures, duration),
 	}
-	return
+	return entryOutput
 }
 
 // gauge vectors for requests
@@ -343,6 +345,13 @@ var (
 var (
 	counterErrors = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
+			Name: "errors",
+			Help: "The errors of load testing",
+		},
+		[]string{"method", "name", "error"},
+	)
+	counterTotalErrors = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
 			Name: "errors",
 			Help: "The errors of load testing",
 		},
@@ -468,16 +477,7 @@ func NewPrometheusPusherOutput(gatewayURL, jobName string, mode string) *Prometh
 	}
 }
 
-// PrometheusPusherOutput pushes boomer stats to Prometheus Pushgateway.
-type PrometheusPusherOutput struct {
-	pusher *push.Pusher // Prometheus Pushgateway Pusher
-}
-
-// OnStart will register all prometheus metric collectors
-func (o *PrometheusPusherOutput) OnStart() {
-	// reset all prometheus metrics
-	resetPrometheusMetrics()
-	log.Info().Msg("register prometheus metric collectors")
+func GetRegistry(isExporter bool) *prometheus.Registry {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
 		// gauge vectors for requests
@@ -491,7 +491,6 @@ func (o *PrometheusPusherOutput) OnStart() {
 		gaugeCurrentRPS,
 		gaugeCurrentFailPerSec,
 		// counter for total
-		counterErrors,
 		counterTotalNumRequests,
 		counterTotalNumFailures,
 		// summary for total
@@ -509,7 +508,23 @@ func (o *PrometheusPusherOutput) OnStart() {
 		gaugeTransactionsPassed,
 		gaugeTransactionsFailed,
 	)
-	o.pusher = o.pusher.Gatherer(registry)
+	if isExporter {
+		registry.MustRegister(counterTotalErrors)
+	} else {
+		registry.MustRegister(counterErrors)
+	}
+	return registry
+}
+
+// PrometheusPusherOutput pushes boomer stats to Prometheus Pushgateway.
+type PrometheusPusherOutput struct {
+	pusher *push.Pusher // Prometheus Pushgateway Pusher
+}
+
+// OnStart will register all prometheus metric collectors
+func (o *PrometheusPusherOutput) OnStart() {
+	log.Info().Msg("register prometheus metric collectors")
+	o.pusher = o.pusher.Gatherer(GetRegistry(false))
 }
 
 // OnStop of PrometheusPusherOutput has nothing to do.
@@ -529,6 +544,14 @@ func (o *PrometheusPusherOutput) OnEvent(data map[string]interface{}) {
 		return
 	}
 
+	setPrometheus(output, false)
+
+	if err := o.pusher.Push(); err != nil {
+		log.Error().Err(err).Msg("push to Pushgateway failed")
+	}
+}
+
+func setPrometheus(output *dataOutput, isExporter bool) {
 	// user count
 	gaugeUsers.Set(float64(output.UserCount))
 
@@ -553,8 +576,13 @@ func (o *PrometheusPusherOutput) OnEvent(data map[string]interface{}) {
 	gaugeTotalFailPerSec.Set(output.TotalFailPerSec)
 
 	// accumulated number of transactions
-	gaugeTransactionsPassed.Set(float64(output.TransactionsPassed))
-	gaugeTransactionsFailed.Set(float64(output.TransactionsFailed))
+	if isExporter {
+		gaugeTransactionsPassed.Set(float64(output.TransactionsPassed))
+		gaugeTransactionsFailed.Set(float64(output.TransactionsFailed))
+	} else {
+		gaugeTransactionsPassed.Add(float64(output.TransactionsPassed))
+		gaugeTransactionsFailed.Add(float64(output.TransactionsFailed))
+	}
 
 	for _, stat := range output.Stats {
 		method := stat.Method
@@ -591,21 +619,30 @@ func (o *PrometheusPusherOutput) OnEvent(data map[string]interface{}) {
 		}
 		gaugeTotalMaxResponseTime.WithLabelValues(method, name).Set(maxResponseTime.(float64))
 
-		counterTotalNumRequests.WithLabelValues(method, name).Add(float64(stat.NumRequests))
-		counterTotalNumFailures.WithLabelValues(method, name).Add(float64(stat.NumFailures))
+		if isExporter {
+			counterTotalNumRequests.WithLabelValues(method, name).Set(float64(stat.NumRequests))
+			counterTotalNumFailures.WithLabelValues(method, name).Set(float64(stat.NumFailures))
+		} else {
+			counterTotalNumRequests.WithLabelValues(method, name).Add(float64(stat.NumRequests))
+			counterTotalNumFailures.WithLabelValues(method, name).Add(float64(stat.NumFailures))
+		}
 	}
 
 	// errors
 	for _, requestError := range output.Errors {
-		counterErrors.WithLabelValues(
-			requestError["method"].(string),
-			requestError["name"].(string),
-			requestError["error"].(string),
-		).Add(float64(requestError["occurrences"].(int64)))
-	}
-
-	if err := o.pusher.Push(); err != nil {
-		log.Error().Err(err).Msg("push to Pushgateway failed")
+		if isExporter {
+			counterTotalErrors.WithLabelValues(
+				requestError["method"].(string),
+				requestError["name"].(string),
+				requestError["error"].(string),
+			).Set(float64(requestError["occurrences"].(int64)))
+		} else {
+			counterErrors.WithLabelValues(
+				requestError["method"].(string),
+				requestError["name"].(string),
+				requestError["error"].(string),
+			).Add(float64(requestError["occurrences"].(int64)))
+		}
 	}
 }
 
@@ -623,6 +660,7 @@ func resetPrometheusMetrics() {
 	gaugeCurrentFailPerSec.Reset()
 	// counter for total
 	counterErrors.Reset()
+	counterTotalErrors.Reset()
 	counterTotalNumRequests.Reset()
 	counterTotalNumFailures.Reset()
 	// summary for total

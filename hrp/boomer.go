@@ -65,6 +65,9 @@ func (b *HRPBoomer) InitBoomer() {
 	if b.GetProfile().PrometheusPushgatewayURL != "" {
 		b.AddOutput(boomer.NewPrometheusPusherOutput(b.GetProfile().PrometheusPushgatewayURL, "hrp", b.GetMode()))
 	}
+	if b.GetProfile().PrometheusExporter {
+		b.SetExporterMode(true)
+	}
 	b.SetSpawnCount(b.GetProfile().SpawnCount)
 	b.SetSpawnRate(b.GetProfile().SpawnRate)
 	b.SetRunTime(b.GetProfile().RunTime)

@@ -136,6 +136,7 @@ func init() {
 	boomCmd.Flags().StringVar(&boomArgs.CPUProfile, "cpu-profile", "", "Enable CPU profiling.")
 	boomCmd.Flags().DurationVar(&boomArgs.CPUProfileDuration, "cpu-profile-duration", 30*time.Second, "CPU profile duration.")
 	boomCmd.Flags().StringVar(&boomArgs.PrometheusPushgatewayURL, "prometheus-gateway", "", "Prometheus Pushgateway url.")
+	boomCmd.Flags().BoolVar(&boomArgs.PrometheusExporter, "prometheus-exporter", false, "Prometheus exporter api.")
 	boomCmd.Flags().BoolVar(&boomArgs.DisableConsoleOutput, "disable-console-output", false, "Disable console output.")
 	boomCmd.Flags().BoolVar(&boomArgs.DisableCompression, "disable-compression", false, "Disable compression")
 	boomCmd.Flags().BoolVar(&boomArgs.DisableKeepalive, "disable-keepalive", false, "Disable keepalive")

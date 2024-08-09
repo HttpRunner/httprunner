@@ -1,6 +1,7 @@
 package boomer
 
 import (
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -29,17 +30,22 @@ type requestFailure struct {
 }
 
 type requestStats struct {
-	entries   map[string]*statsEntry
-	errors    map[string]*statsError
-	total     *statsEntry
-	startTime int64
+	entries            map[string]*statsEntry
+	errors             map[string]*statsError
+	total              *statsEntry
+	totalForTestResult *statsEntry
+	startTime          int64
 
-	transactionChan   chan *transaction
-	transactionPassed int64 // accumulated number of passed transactions
-	transactionFailed int64 // accumulated number of failed transactions
+	transactionChan                chan *transaction
+	transactionPassed              int64 // accumulated number of passed transactions
+	transactionFailed              int64 // accumulated number of failed transactions
+	transactionPassedForTestResult int64 // accumulated number of passed transactions
+	transactionFailedForTestResult int64 // accumulated number of failed transactions
 
 	requestSuccessChan chan *requestSuccess
 	requestFailureChan chan *requestFailure
+
+	statsToMasterChan chan map[string]interface{}
 }
 
 func newRequestStats() (stats *requestStats) {
@@ -53,12 +59,18 @@ func newRequestStats() (stats *requestStats) {
 	stats.transactionChan = make(chan *transaction, 100)
 	stats.requestSuccessChan = make(chan *requestSuccess, 100)
 	stats.requestFailureChan = make(chan *requestFailure, 100)
+	stats.statsToMasterChan = make(chan map[string]interface{}, 100)
 
 	stats.total = &statsEntry{
 		Name:   "Total",
 		Method: "",
 	}
+	stats.totalForTestResult = &statsEntry{
+		Name:   "Total",
+		Method: "",
+	}
 	stats.total.reset()
+	stats.totalForTestResult.reset()
 
 	return stats
 }
@@ -120,8 +132,14 @@ func (s *requestStats) clearAll() {
 		Method: "",
 	}
 	s.total.reset()
+	s.totalForTestResult = &statsEntry{
+		Name:   "Total",
+		Method: "",
+	}
+	s.totalForTestResult.reset()
 	s.transactionPassed = 0
 	s.transactionFailed = 0
+	s.transactionPassedForTestResult, s.transactionFailedForTestResult = 0, 0
 	s.entries = make(map[string]*statsEntry)
 	s.errors = make(map[string]*statsError)
 	s.startTime = time.Now().Unix()
@@ -151,9 +169,14 @@ func (s *requestStats) collectReportData() map[string]interface{} {
 		"passed": s.transactionPassed,
 		"failed": s.transactionFailed,
 	}
+	s.transactionPassedForTestResult += s.transactionPassed
+	s.transactionFailedForTestResult += s.transactionFailed
 	data["stats"] = s.serializeStats()
-	data["stats_total"] = s.total.serialize()
+	s.totalForTestResult.extend(s.total)
+	data["stats_total"] = s.total.getStrippedReport()
 	data["errors"] = s.serializeErrors()
+	// reset transactions
+	s.transactionPassed, s.transactionFailed = 0, 0
 	s.errors = make(map[string]*statsError)
 	return data
 }
@@ -281,6 +304,29 @@ func (s *statsEntry) getStrippedReport() map[string]interface{} {
 	return report
 }
 
+func (s *statsEntry) extend(one *statsEntry) {
+	s.NumRequests += one.NumRequests
+	s.NumFailures += one.NumFailures
+	s.TotalResponseTime += one.TotalResponseTime
+	if s.MinResponseTime == 0 {
+		s.MinResponseTime = one.MinResponseTime
+	}
+	s.MinResponseTime = int64(math.Min(float64(s.MinResponseTime), float64(one.MinResponseTime)))
+	s.MaxResponseTime = int64(math.Max(float64(s.MaxResponseTime), float64(one.MaxResponseTime)))
+
+	for key, val := range one.ResponseTimes {
+		if _, ok := s.ResponseTimes[key]; ok {
+			s.ResponseTimes[key] += val
+		} else {
+			s.ResponseTimes[key] = val
+		}
+	}
+
+	s.TotalContentLength += one.TotalContentLength
+	s.StartTime = int64(math.Min(float64(s.StartTime), float64(one.StartTime)))
+	s.LastRequestTimestamp = int64(math.Max(float64(s.LastRequestTimestamp), float64(one.LastRequestTimestamp)))
+}
+
 type statsError struct {
 	name        string
 	method      string
@@ -299,4 +345,11 @@ func (err *statsError) toMap() map[string]interface{} {
 	m["error"] = err.errMsg
 	m["occurrences"] = err.occurrences
 	return m
+}
+func (err *statsError) deserialize(m map[string]interface{}) *statsError {
+	err.method = m["method"].(string)
+	err.name = m["name"].(string)
+	err.errMsg, _ = m["error"].(string)
+	err.occurrences = int64(m["occurrences"].(float64))
+	return err
 }
